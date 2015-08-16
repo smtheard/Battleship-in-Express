@@ -1,0 +1,11 @@
+extends layout
+
+block content
+  h1 Welcome aboard the #{title}, #{name}!
+  p There are currently x other players online.
+  table
+    thead
+      tr: th(colspan="2") Challenge Lobby
+    tbody(id="playerList")
+  script.
+    initiateSocket("#{name}");

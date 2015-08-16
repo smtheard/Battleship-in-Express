@@ -1,0 +1,10 @@
+extends layout
+
+block content
+  h1 Welcome to the #{title}, sailor!
+  p Enter your name, maggot, and climb aboard the #{title}.
+  form(method='post', action='/gameLobby')
+    | Username: 
+    input(id='username', type='text', name='name', autofocus)
+
+    input(id='submitBtn', type='submit', value='Sir, Yes Sir!')

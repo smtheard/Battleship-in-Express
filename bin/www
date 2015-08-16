@@ -1,0 +1,223 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('battleship:server');
+var http = require('http');
+var gameLogic = require('../public/javascripts/scripts.js')
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+var gameList = [];
+var userList = [];
+var listOfPlayers = [];
+var pairList = [];
+var currentGame = new Game();
+
+var io = require('socket.io').listen(server);
+
+var getUser = function (opponent) {
+  return userList.filter(function (user) {
+    return user.username === opponent;
+  });
+}
+
+io.on('connection', function(socket) {
+  socket.on('successful connection', function (data) {
+    userList.push({ socketID: socket, username: data.username })
+    
+    listOfPlayers.push(data.username);
+    
+    socket.broadcast.emit('update players', { players: listOfPlayers });
+    socket.emit('update players', { players: listOfPlayers });
+    
+    console.log(data.username, 'boarded the ship.');
+  });
+
+  socket.on('challenge player', function (data) {
+    console.log(data.challenger + ' issued a challenge to ' + data.opponent);
+
+    var opponent = getUser(data.opponent);
+
+    opponent[0].socketID.emit('send challenge', { challenger: data.challenger })
+  })
+
+  socket.on('accepted challenge', function (data) {
+    var player1 = getUser(data.player1name);
+    var player2 = getUser(data.player2name);
+    var gameID = player1[0].username + player2[0].username;
+    pairList.push({ user1: player1[0], user2: player2[0], game: gameID });
+    player1[0].socketID.emit('send to game page', { player: player1[0].username, game: gameID });
+    player2[0].socketID.emit('send to game page', { player: player2[0].username, game: gameID });
+  })
+
+  socket.on('successful game connection', function (data) {
+    userList.push({ socketID: socket, username: data.player})
+    gameList.push({ gameID: data.gameID, username: data.player})
+    if(currentGame.player1 === undefined){
+      console.log('player 1 initiated!');
+      currentGame.player1 = new Player(data.player, socket);
+    }
+    else if(currentGame.player2 === undefined){
+      console.log('player 2 initiated!');
+      currentGame.player2 = new Player(data.player, socket);
+    }
+    else
+      console.log('No support for more than 2 players')
+  })
+
+  socket.on('ship placed', function (data) {
+    if(currentGame.player1.socket === socket){
+      if(currentGame.player1.placeShip(data.x, data.y))
+        socket.emit('ship successfully placed', {x: data.x, y: data.y})
+    }
+    else if(currentGame.player2.socket === socket){
+      if(currentGame.player2.placeShip(data.x, data.y))
+        socket.emit('ship successfully placed', {x: data.x, y: data.y})
+    }
+    else
+      console.log('no player matching socket in this game');
+    if(currentGame.playersAreReady()){
+      currentGame.initiateEnemyBoards();
+      socket.emit('switch boards');
+      socket.broadcast.emit('switch boards');
+    }
+    
+  })
+
+  socket.on('attack!', function (data) {
+    if(currentGame.player1.socket === socket && currentGame.turn === 1){
+      if(currentGame.makeNextMove(data.x, data.y)){
+        console.log('Player 1 HIT!');
+        socket.emit('attack response', {x: data.x, y: data.y, response: 'hit'});
+      }
+      else{
+        console.log('Player 1 MISS!');
+        socket.emit('attack response', {x: data.x, y: data.y, response: 'miss'});
+      }
+      if(currentGame.isGameOver()){
+        console.log('GAME OVER!');
+        socket.emit('game over', {winner: currentGame.player1.id});
+        socket.broadcast.emit('game over', {winner: currentGame.player1.id});
+        currentGame = new Game();
+      }
+    }
+    else if(currentGame.player2.socket === socket && currentGame.turn === 2){
+      if(currentGame.makeNextMove(data.x, data.y)){
+        socket.emit('attack response', {x: data.x, y: data.y, response: 'hit'});
+      }
+      else{
+        socket.emit('attack response', {x: data.x, y: data.y, response: 'miss'});
+      }
+      if(currentGame.isGameOver()){
+        socket.emit('game over', {winner: currentGame.player2.id});
+        socket.broadcast.emit('game over', {winner: currentGame.player2.id});
+        currentGame = new Game();
+      }
+    }
+    else{
+      socket.emit('opponents turn');
+    }
+    
+  })
+
+
+  socket.on('disconnect', function () {
+    currentGame = new Game();
+    var playerRemoved = userList.filter(function (user) {
+      return user.socketID === socket
+    });
+    console.log(playerRemoved[0].username + ' has left');
+
+    userList = userList.filter(function (user) {
+      return user.socketID !== socket
+    });
+    
+    listOfPlayers = listOfPlayers.filter(function (user) {
+      return user !== playerRemoved[0].username;
+    })
+
+    socket.broadcast.emit('update players', { players: listOfPlayers });
+  });
+});
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}

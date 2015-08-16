@@ -1,0 +1,28 @@
+{
+  "name": "battleship",
+  "version": "0.0.0",
+  "private": true,
+  "description": "assign4",
+  "main": "Gruntfile.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "body-parser": "~1.13.2",
+    "cookie-parser": "~1.3.5",
+    "debug": "~2.2.0",
+    "express": "~4.13.1",
+    "express-session": "latest",
+    "jade": "~1.11.0",
+    "morgan": "~1.6.1",
+    "serve-favicon": "~2.3.0",
+    "socket.io": "latest"
+  },
+  "scripts": {
+    "start": "node ./bin/www"
+  },
+  "devDependencies": {
+    "grunt-contrib-nodeunit": "^0.4.1",
+    "grunt-exec": "^0.4.6"
+  }
+}
